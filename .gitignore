@@ -1,0 +1,46 @@
+.venv/
+venv/
+env/
+ENV/
+.env
+*.env
+
+# py
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Data (VERY IMPORTANT)
+data/cache_v2/
+data/cache/
+data/processed/
+data/raw/
+
+# allow structure but not files
+!data/.keep
+!data/cache_v2/.keep
+!data/processed/.keep
+
+# jupyter/ misc dev
+.ipynb_checkpoints/
+*.ipynb
+
+# logs / temp
+*.log
+*.tmp
+*.swp
+*.swo
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
