@@ -1,8 +1,8 @@
 Example Use:
 
 python pm25_dataset_builder.py \
-  --start 2023-04-01 \
-  --end 2023-04-30 \
-  --output-csv data/los_angeles_starter_dataset.csv \
-  --write-stan-json \
-  --output-json data/los_angeles_starter_dataset.json
+  --location-name "Los Angeles--Long Beach--Anaheim, CA Urban Area" \
+  --start 2023-07-01T00:00:00Z \
+  --end 2023-07-31T23:00:00Z \
+  --output-csv data/7_23.csv \
+  --output-meta-json data/7_23.json
