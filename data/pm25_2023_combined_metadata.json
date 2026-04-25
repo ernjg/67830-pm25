@@ -1,0 +1,23 @@
+{
+  "description": "Combined hourly 2023 PM2.5 dataset built from monthly files.",
+  "input_files": [
+    "data/10_23.csv",
+    "data/11_23.csv",
+    "data/12_23.csv",
+    "data/1_23.csv",
+    "data/2_23.csv",
+    "data/3_23.csv",
+    "data/4_23.csv",
+    "data/5_23.csv",
+    "data/6_23.csv",
+    "data/7_23.csv",
+    "data/8_23.csv",
+    "data/9_23.csv"
+  ],
+  "output_csv": "data/2023_combined.csv",
+  "n_rows": 8760,
+  "first_timestamp_utc": "2023-01-01 00:00:00+00:00",
+  "last_timestamp_utc": "2023-12-31 23:00:00+00:00",
+  "missing_2023_hours": 0,
+  "join_key": "timestamp_utc"
+}
