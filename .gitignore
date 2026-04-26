@@ -31,7 +31,6 @@ data/cache_working/
 
 # jupyter/ misc dev
 .ipynb_checkpoints/
-#*.ipynb
 
 # logs / temp
 *.log
