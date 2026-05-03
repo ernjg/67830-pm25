@@ -149,7 +149,7 @@ class WorkingPM25Builder:
 
         df.to_csv(self.output_csv, index=False)
         self.write_metadata()
-        self.cleanup_cache()
+        #self.cleanup_cache()
 
         print(f"Wrote {self.output_csv}")
         print(f"Wrote {self.output_meta_json}")
