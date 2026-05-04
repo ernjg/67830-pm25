@@ -18,14 +18,27 @@ LA_URBAN_AREA_LON = -118.1224
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Download NAQFC/AQMv6 PM2.5 forecast files from NOAA AWS and add "
+            "Download NAQFC/AQM PM2.5 forecast files from NOAA AWS and add "
             "non-leaking t+1/t+2/t+3 forecast features to an existing hourly PM2.5 dataset."
         )
     )
 
     parser.add_argument("--input-csv", default="data/2023_combined.csv")
     parser.add_argument("--output-csv", default="data/2023_combined_plus_naqfc.csv")
-    parser.add_argument("--cache-dir", default="data/cache/naqfc")
+
+    parser.add_argument(
+        "--cache-dir",
+        default="data/cache/naqfc_grib",
+        help="Temporary cache for downloaded GRIB2 files.",
+    )
+    parser.add_argument(
+        "--forecast-table-cache",
+        default="data/cache/naqfc_forecast_table_checkpoint.csv",
+        help=(
+            "Checkpoint CSV for extracted local NAQFC forecast rows. "
+            "This is saved after each completed forecast cycle."
+        ),
+    )
 
     parser.add_argument("--lat", type=float, default=LA_URBAN_AREA_LAT)
     parser.add_argument("--lon", type=float, default=LA_URBAN_AREA_LON)
@@ -33,7 +46,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--cycles",
         default="06,12",
-        help="Comma-separated forecast cycles to use. AQMv6 archive has 06 and 12.",
+        help="Comma-separated forecast cycles to use.",
     )
     parser.add_argument(
         "--horizons",
@@ -74,6 +87,20 @@ def parse_utc_timestamp(value: str) -> pd.Timestamp:
     return ts.tz_convert("UTC")
 
 
+def aqm_version_for_issue_time(issue_time: pd.Timestamp) -> str:
+    """
+    NOAA's archive has AQMv6 for 2023 and early 2024, then AQMv7 after
+    the May 2024 operational upgrade. The first AQMv7 date we observed
+    in the archive is 2024-05-14.
+    """
+    switch_time = pd.Timestamp("2024-05-14T00:00:00Z")
+
+    if issue_time >= switch_time:
+        return "AQMv7"
+
+    return "AQMv6"
+
+
 def request_with_retries(
     url: str,
     timeout: int = 180,
@@ -107,13 +134,14 @@ def request_with_retries(
 def naqfc_url(issue_time: pd.Timestamp, product: str) -> str:
     ymd = issue_time.strftime("%Y%m%d")
     cycle = issue_time.strftime("%H")
+    version = aqm_version_for_issue_time(issue_time)
 
     if product == "pm25":
         filename = f"aqm.t{cycle}z.ave_1hr_pm25.{ymd}.227.grib2"
     else:
         filename = f"aqm.t{cycle}z.ave_1hr_pm25_bc.{ymd}.227.grib2"
 
-    return f"{AWS_BASE}/AQMv6/CS/{ymd}/{cycle}/{filename}"
+    return f"{AWS_BASE}/{version}/CS/{ymd}/{cycle}/{filename}"
 
 
 def local_naqfc_path(
@@ -123,13 +151,14 @@ def local_naqfc_path(
 ) -> Path:
     ymd = issue_time.strftime("%Y%m%d")
     cycle = issue_time.strftime("%H")
+    version = aqm_version_for_issue_time(issue_time)
 
     if product == "pm25":
         filename = f"aqm.t{cycle}z.ave_1hr_pm25.{ymd}.227.grib2"
     else:
         filename = f"aqm.t{cycle}z.ave_1hr_pm25_bc.{ymd}.227.grib2"
 
-    return cache_dir / ymd / cycle / filename
+    return cache_dir / version / ymd / cycle / filename
 
 
 def download_naqfc_file(
@@ -192,6 +221,7 @@ def extract_local_forecast_rows(
     issue_time: pd.Timestamp,
     lat: float,
     lon: float,
+    product: str,
 ) -> list[dict]:
     import xarray as xr
 
@@ -210,7 +240,6 @@ def extract_local_forecast_rows(
         if len(ds.data_vars) == 0:
             raise ValueError(f"No data variables found in {grib_path}")
 
-        # Usually there is only one variable in this file.
         var_name = list(ds.data_vars)[0]
         da = ds[var_name]
 
@@ -232,12 +261,12 @@ def extract_local_forecast_rows(
 
         nearest_lat = float(lats[nearest_ij])
         nearest_lon = float(lons[nearest_ij])
+
         print(
             f"Nearest NAQFC grid point: lat={nearest_lat:.4f}, "
             f"lon={nearest_lon:.4f}"
         )
 
-        # Spatial dims are usually y/x in cfgrib.
         spatial_dims = ds["latitude"].dims
         if len(spatial_dims) != 2:
             raise ValueError(f"Expected 2D latitude grid, got dims {spatial_dims}")
@@ -250,12 +279,24 @@ def extract_local_forecast_rows(
         ]
 
         if len(non_spatial_dims) == 0:
-            valid_time = pd.Timestamp(ds["valid_time"].values, tz="UTC")
+            valid_time = pd.Timestamp(ds["valid_time"].values)
+
+            if valid_time.tzinfo is None:
+                valid_time = valid_time.tz_localize("UTC")
+            else:
+                valid_time = valid_time.tz_convert("UTC")
+
             forecast_hour = int(round((valid_time - issue_time).total_seconds() / 3600))
             value = float(da.isel({y_dim: y_idx, x_dim: x_idx}).values)
 
             rows.append(
                 {
+                    "aqm_version": aqm_version_for_issue_time(issue_time),
+                    "product": product,
+                    "extract_lat": lat,
+                    "extract_lon": lon,
+                    "nearest_grid_lat": nearest_lat,
+                    "nearest_grid_lon": nearest_lon,
                     "issue_time_utc": issue_time,
                     "valid_time_utc": valid_time,
                     "forecast_hour": forecast_hour,
@@ -294,11 +335,22 @@ def extract_local_forecast_rows(
                 ).values
             )
 
-            valid_time = pd.Timestamp(valid_time).tz_convert("UTC")
+            valid_time = pd.Timestamp(valid_time)
+            if valid_time.tzinfo is None:
+                valid_time = valid_time.tz_localize("UTC")
+            else:
+                valid_time = valid_time.tz_convert("UTC")
+
             forecast_hour = int(round((valid_time - issue_time).total_seconds() / 3600))
 
             rows.append(
                 {
+                    "aqm_version": aqm_version_for_issue_time(issue_time),
+                    "product": product,
+                    "extract_lat": lat,
+                    "extract_lon": lon,
+                    "nearest_grid_lat": nearest_lat,
+                    "nearest_grid_lon": nearest_lon,
                     "issue_time_utc": issue_time,
                     "valid_time_utc": valid_time,
                     "forecast_hour": forecast_hour,
@@ -311,6 +363,46 @@ def extract_local_forecast_rows(
 
     finally:
         ds.close()
+
+
+def write_checkpoint_atomic(df: pd.DataFrame, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    df.to_csv(tmp, index=False)
+    tmp.replace(path)
+
+
+def load_checkpoint(
+    path: Path,
+    product: str,
+    lat: float,
+    lon: float,
+) -> pd.DataFrame:
+    if not path.exists():
+        return pd.DataFrame()
+
+    df = pd.read_csv(path)
+
+    if df.empty:
+        return df
+
+    df["issue_time_utc"] = pd.to_datetime(df["issue_time_utc"], utc=True)
+    df["valid_time_utc"] = pd.to_datetime(df["valid_time_utc"], utc=True)
+
+    if "product" in df.columns:
+        df = df[df["product"] == product].copy()
+
+    if "extract_lat" in df.columns and "extract_lon" in df.columns:
+        df = df[
+            np.isclose(df["extract_lat"].astype(float), lat)
+            & np.isclose(df["extract_lon"].astype(float), lon)
+        ].copy()
+
+    print(f"Loaded {len(df)} checkpoint rows from {path}")
+
+    return df
+
 
 def build_issue_times(
     start: pd.Timestamp,
@@ -336,6 +428,7 @@ def build_forecast_table(
     start: pd.Timestamp,
     end: pd.Timestamp,
     cache_dir: Path,
+    forecast_table_cache: Path,
     lat: float,
     lon: float,
     cycles: list[int],
@@ -343,9 +436,29 @@ def build_forecast_table(
     keep_grib_cache: bool,
 ) -> pd.DataFrame:
     issue_times = build_issue_times(start, end, cycles)
-    rows = []
+
+    checkpoint_df = load_checkpoint(
+        forecast_table_cache,
+        product=product,
+        lat=lat,
+        lon=lon,
+    )
+
+    rows = checkpoint_df.to_dict("records") if not checkpoint_df.empty else []
+
+    done_issues = set()
+    if not checkpoint_df.empty:
+        done_issues = set(
+            checkpoint_df["issue_time_utc"].dt.floor("h").astype(str)
+        )
 
     for issue_time in issue_times:
+        issue_key = str(issue_time.floor("h"))
+
+        if issue_key in done_issues:
+            print(f"Skipping already extracted cycle: {issue_time}")
+            continue
+
         path = download_naqfc_file(
             cache_dir=cache_dir,
             issue_time=issue_time,
@@ -361,9 +474,17 @@ def build_forecast_table(
                 issue_time=issue_time,
                 lat=lat,
                 lon=lon,
+                product=product,
             )
+
             rows.extend(extracted)
+            done_issues.add(issue_key)
+
+            checkpoint = pd.DataFrame(rows)
+            write_checkpoint_atomic(checkpoint, forecast_table_cache)
+
             print(f"Extracted {len(extracted)} messages from {path}")
+            print(f"Updated checkpoint: {forecast_table_cache}")
 
         except Exception as exc:
             print(f"Could not read {path}: {exc}")
@@ -501,6 +622,7 @@ def main() -> None:
         start=start,
         end=end,
         cache_dir=Path(args.cache_dir),
+        forecast_table_cache=Path(args.forecast_table_cache),
         lat=args.lat,
         lon=args.lon,
         cycles=cycles,

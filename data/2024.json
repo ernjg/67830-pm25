@@ -1,0 +1,38 @@
+{
+  "location_name": "Los Angeles--Long Beach--Anaheim, CA Urban Area",
+  "location_centroid": {
+    "lat": 33.984996,
+    "lon": -118.122395
+  },
+  "time_index": {
+    "name": "timestamp_utc",
+    "timezone": "UTC",
+    "meaning": "hour beginning timestamp"
+  },
+  "columns": {
+    "airnow_pm25_obs_ug_m3": {
+      "units": "ug/m3",
+      "description": "Mean PM2.5 over up to 10 nearest AirNow PM2.5 observations within 50 km from the HourlyAQObs file"
+    },
+    "geoscf_pm25_fcst_tplus1_ug_m3": {
+      "units": "ug/m3",
+      "description": "GEOS-CF PM2.5 forecast for t+1 from the most recent 12Z forecast cycle available at time t"
+    },
+    "geoscf_pm25_fcst_tplus2_ug_m3": {
+      "units": "ug/m3",
+      "description": "GEOS-CF PM2.5 forecast for t+2 from the most recent 12Z forecast cycle available at time t"
+    },
+    "geoscf_pm25_fcst_tplus3_ug_m3": {
+      "units": "ug/m3",
+      "description": "GEOS-CF PM2.5 forecast for t+3 from the most recent 12Z forecast cycle available at time t"
+    },
+    "hour_utc": {
+      "units": "hour",
+      "description": "UTC hour of day, 0 through 23"
+    },
+    "day_of_year": {
+      "units": "day",
+      "description": "Day of year, 1 through 366"
+    }
+  }
+}
