@@ -1,0 +1,15 @@
+{
+  "csv": "data/2024_FINAL.csv",
+  "linreg_json": "linreg_fit_summary.json",
+  "sinusoid_json": "sinusoid_fit_summary.json",
+  "linreg_forecast_col": "geoscf_pm25_fcst_tplus1_ug_m3",
+  "sinusoid_forecast_col": "geoscf_pm25_fcst_tplus1_ug_m3",
+  "linreg_forecast_scale": 200.0,
+  "sinusoid_forecast_scale": 1.0,
+  "models": [
+    "NAQFC_pred",
+    "Linear_pred",
+    "Sinusoidal_pred"
+  ],
+  "task": "one_hour_ahead"
+}
